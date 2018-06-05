@@ -1,12 +1,3 @@
-# Hey Matthias,
-# es haben folgende dinge nicht funktioniert:
-# das iterrieren über die features hat immer einen fehler gegeben und
-# genauso auch das erstellen der line features als grenzen der PAs.
-# Deswegen konnte ich das alles nur per hand für ein PA machen. Das KML file ist auch nicht richtig.....
-# mehr ging leider nicht, meine Gruppe war da leider auch keine Hilfe, da es im Prinzip keine Gruppenarbeit gab.
-# Ich denke es hat jetzt jeder für sich das gemacht ohne darüber weiter zu reden....
-
-
 
 # ############################################################################################################# #
 # (c) Moritz Wenzler, Humboldt-Universität zu Berlin, 4/24/2018
@@ -22,9 +13,9 @@ import random
 import numpy as np
 import os
 import math
-import simplekml
+#import simplekml
 from shapely.wkb import loads
-import shapely
+from shapely import wkt
 
 # ####################################### SET TIME-COUNT ###################################################### #
 starttime = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
@@ -71,13 +62,14 @@ point_df = pd.DataFrame() # pre result_list
 
 
 #for pa_feat in PA_lyr:
-feature = PA_lyr.GetNextFeature()
-while feature:
-    while len(point_df) < 10: # ask if min 10 points are in list for this PA
-        geom = feature.GetGeometryRef()
+#feature = PA_lyr.GetNextFeature()
+for feature in PA_lyr:
+#while feature:
+     # ask if min 10 points are in list for this PA
+        geom = feature.geometry().Clone()
         env = geom.GetEnvelope()#Get.Envelope returns minX, minY, maxX, maxY in env[0], env[2], env[1], env[3])
         name = feature.GetField('NAME')
-        print(name)
+        #print(name)
         #print("xmin:",env[0], "ymin:",env[2], "xmax:",env[1], "ymax:",env[3])
 
         xmin = env[0]
@@ -90,103 +82,46 @@ while feature:
         PA_ymax = math.ceil(-((y2 - ymax) / 30))
         PA_ymin = math.ceil(-((y2 - ymin) / 30))
 
+    while len(point_df) < 50:
         new_x = random.randrange(PA_xmin, PA_xmax, 30) # get a random x coordinate within the 30 meters interval
         new_y = random.randrange(PA_ymin, PA_ymax, 30) # same with y
 
         # create a geometry from coordinates
         pointCoord = (xmin + (new_x * 30)), (ymin + (new_y * 30))
 
-        print(pointCoord)
+
         coord_df = pd.DataFrame(data={'x': [pointCoord[0]], 'y': [pointCoord[1]]})
-
-
-        fieldName = 'ID'
-        fieldType = ogr.OFTString
-        fieldValue = int(str(int(len(point_all_df)/10+1)) + str(len(point_df)))
-        outSHPfn = root_folder + 'point.shp'
-
-        # Create the output shapefile
-        shpDriver = ogr.GetDriverByName("ESRI Shapefile")
-        if os.path.exists(outSHPfn):
-            shpDriver.DeleteDataSource(outSHPfn)
-        outDataSource = shpDriver.CreateDataSource(outSHPfn)
-        outLayer = outDataSource.CreateLayer(outSHPfn,
-                                             point_srs,
-                                             geom_type=ogr.wkbPoint)
 
         # create point geometry
         point = ogr.Geometry(ogr.wkbPoint)
         point.AddPoint(pointCoord[0], pointCoord[1])
 
-        # create a field
-        idField = ogr.FieldDefn(fieldName, fieldType)
-        outLayer.CreateField(idField)
-
-        # Create the feature and set values
-        featureDefn = outLayer.GetLayerDefn()
-        outFeature = ogr.Feature(featureDefn)
-        outFeature.SetGeometry(point)
-        outFeature.SetField(fieldName, fieldValue)
-        outLayer.CreateFeature(outFeature)
-        point_feat = outLayer.GetNextFeature()
-        point_geom = point_feat.GetGeometryRef()
-        poly_feat = feature.GetGeometryRef()
-        outFeature = None
-
-
-        ### create lines from borders ###
-
-        #output_line = root_folder + 'line.shp'
-        # polygon2geometryCollection
-        #geomcol = ogr.Geometry(ogr.wkbGeometryCollection)
-        # for feat in source_layer:
-        #geom = feature.GetGeometryRef()
-        #ring = geom.GetGeometryRef(0)
-        #geomcol.AddGeometry(ring)
-
-        # geometryCollection2shp
-        #shpDriver = ogr.GetDriverByName("ESRI Shapefile")
-        #if os.path.exists(output_line):
-        #    shpDriver.DeleteDataSource(output_line)
-        #outDataSource = shpDriver.CreateDataSource(output_line)
-        #outLayer = outDataSource.CreateLayer(output_line, point_srs, geom_type=ogr.wkbMultiLineString)
-        #featureDefn = outLayer.GetLayerDefn()
-        #outFeature = ogr.Feature(featureDefn)
-        #outFeature.SetGeometry(geomcol)
-        #outLayer.CreateFeature(outFeature)
-        #line_feat = outLayer.GetNextFeature()
-        #line_geom = line_feat.GetGeometryRef()
-        #outFeature = None
-
-        # show coordinates
-        #print(point_geom.ExportToWkt())
-        # show epsg
-        #print(point_geom.GetSpatialReference())
-        #print(poly_feat.GetSpatialReference())
-        #print(outLayer.GetSpatialRef())
 
 
 # aks if point is within the borders
-        if point_geom.Within(poly_feat):
+        if geom.Contains(point):
             print("Point Within Borders ")
             # if true, aks if point is more than 60 meters away from border
-            if point_geom.Within(poly_feat): # point_geom.Distance(line_feat) >= 90
+            PA_wkt = wkt.loads(str(geom))
+            point_wkt = wkt.loads(str(point))
+            if PA_wkt.boundary.distance(point_wkt) >= 64: # point_geom.Distance(line_feat) >= 90
                 print("Distnace to borders > 90m")
-
-                if len(point_df) == 0:
-                    point_df = point_df.append(coord_df)
-                else:
-                    #if true, ask if one of the points from before is more then 90 meters away, to avoid overlapping polygons
-                    if (np.min(point_df["x"]) - 90) <= int(point_geom.GetX()) >= (np.min(point_df["x"]) + 90):
-                        print("TRUE")
-                        point_df = point_df.append(coord_df)
-                    else:
-                        print("FALSE")
-                        if (np.min(point_df["y"]) - 90) <= int(point_geom.GetY()) >= (np.min(point_df["y"]) + 90):
-                            print("TRUE")
-                            point_df = point_df.append(coord_df)
-                        else:
-                           print("FALSE")
+                print(pointCoord)
+                point_df = point_df.append(coord_df)
+                #if len(point_df) == 0:
+                #    point_df = point_df.append(coord_df)
+                #else:
+                #    #if true, ask if one of the points from before is more then 90 meters away, to avoid overlapping polygons
+                #    if (np.min(point_df["x"]) - 90) <= int(point_geom.GetX()) >= (np.min(point_df["x"]) + 90):
+                #        print("TRUE")
+                #        point_df = point_df.append(coord_df)
+                #    else:
+                #        print("FALSE")
+                #        if (np.min(point_df["y"]) - 90) <= int(point_geom.GetY()) >= (np.min(point_df["y"]) + 90):
+                #            print("TRUE")
+                #            point_df = point_df.append(coord_df)
+                #        else:
+                #           print("FALSE")
             else:
                 print("Point to close to borders")
         else:
@@ -200,8 +135,8 @@ while feature:
         point_df = pd.DataFrame()
         #poly_feat = None
         #point_geom = None
-        feature = None     ##### crashes when i use this line and/or the next line
-    feature = PA_lyr.GetNextFeature()
+        #feature = None     ##### crashes when i use this line and/or the next line
+    #feature = PA_lyr.GetNextFeature()
 PA_lyr.ResetReading()
 len(point_all_df)/10
 
