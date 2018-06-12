@@ -40,15 +40,12 @@ priv_lyr = priv.GetLayer()
 print(priv_lyr.GetSpatialRef())
 
 proj_e = elev.GetProjection()
-epsg_e = int(proj_e[199:203])
 out_ref_e = osr.SpatialReference()
-out_ref_e.ImportFromEPSG(epsg_e)
+out_ref_e.ImportFromWkt(proj_e)
 
 proj_d = dist.GetProjection()
-l_p = len(proj_d)
-epsg_d = int(proj_d[l_p-8:l_p-4])
 out_ref_d = osr.SpatialReference()
-out_ref_d.ImportFromEPSG(epsg_d)
+out_ref_d.ImportFromWkt(proj_d)
 
 
 #2 transform points into raster pixel
@@ -66,26 +63,37 @@ def reproject_point(geom_point, out_ref):
     point_rep.Transform(coordTrans)
     return(point_rep)
 
+def point_to_rast(point,gt):
+    x, y = point.GetX(), point.GetY()
+    px = int((x - gt[0]) / gt[1])
+    py = int((y - gt[3]) / gt[5])
+    return(px, py)
+
 while feature:
     geom = feature.GetGeometryRef()
 
     point_old = reproject_point(geom, old_lyr.GetSpatialRef())
     point_priv = reproject_point(geom, priv_lyr.GetSpatialRef())
     point_e = reproject_point(geom, out_ref_e)
-    print(point_e.GetSpatialReference())
-    mxe, mye = point_e.GetX(), point_e.GetY()
+    #print(point_e.GetSpatialReference())
 
-    px_e = int((mxe - gt_elev[0]) / gt_elev[1])
-    py_e = int((mxe - gt_elev[3]) / gt_elev[5])
-    px_e, py_e
+    px_e, py_e = point_to_rast(point_e,gt_elev)
 
     point_d = reproject_point(geom, out_ref_d)
-    print(point_d.GetSpatialReference())
-    mxd, myd = point_p.GetX(), point_p.GetY()
+    #print(point_d.GetSpatialReference())
 
-    px_p = int((mxp - gt_elev[0]) / gt_elev[1])
-    py_p = int((myp - gt_elev[3]) / gt_elev[5])
-    px_d, py_d
+    px_d, py_d = point_to_rast(point_d,gt_dist)
+
+
+    old_lyr.SetSpatialFilter(point_old)
+
+    if old_lyr.GetFeatureCount() > 0:
+        old_bin = int(1)
+
+    priv_lyr.SetSpatialFilter(point_priv)
+
+    if priv_lyr.GetFeatureCount() > 0:
+        priv_bin = int(1)
 
 #3 get 1 or 0 if in shapes
 
