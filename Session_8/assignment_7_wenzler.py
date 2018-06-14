@@ -2,19 +2,10 @@
 # (c) Moritz Wenzler, Humboldt-Universität zu Berlin, 4/24/2018
 # ####################################### LOAD REQUIRED LIBRARIES ############################################# #
 import time
-import osgeo.ogr, osgeo.osr
 from osgeo import gdal, ogr, osr
-from pyproj import Proj, transform
-import geopandas as gpd
 import pandas as pd
-from math import modf
-import random
-import numpy as np
-import os
-import math
-#import simplekml
-from shapely.wkb import loads
-from shapely import wkt
+import struct
+import tqdm
 
 # ####################################### SET TIME-COUNT ###################################################### #
 starttime = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
@@ -32,12 +23,17 @@ old = driver.Open(indir + '/Old_Growth.shp')
 priv = driver.Open(indir + '/PrivateLands.shp')
 points = driver.Open(indir + '/Points.shp')
 elev = gdal.Open(indir + '/Elevation.tif')
+elev_ras = elev.GetRasterBand(1)
+
+
 dist = gdal.Open(indir + '/DistToRoad.tif')
+dist_ras = dist.GetRasterBand(1)
+
 
 old_lyr = old.GetLayer()
-print(old_lyr.GetSpatialRef())
+#print(old_lyr.GetSpatialRef())
 priv_lyr = priv.GetLayer()
-print(priv_lyr.GetSpatialRef())
+#print(priv_lyr.GetSpatialRef())
 
 proj_e = elev.GetProjection()
 out_ref_e = osr.SpatialReference()
@@ -54,7 +50,7 @@ gt_dist = dist.GetGeoTransform()
 
 points_lyr = points.GetLayer()
 
-feature = points_lyr.GetNextFeature()
+
 
 def reproject_point(geom_point, out_ref):
     inSpatialRef = geom_point.GetSpatialReference()
@@ -68,6 +64,11 @@ def point_to_rast(point,gt):
     px = int((x - gt[0]) / gt[1])
     py = int((y - gt[3]) / gt[5])
     return(px, py)
+
+df = pd.DataFrame()
+
+feature = points_lyr.GetNextFeature()
+#pbar = tqdm(total=100)#int(points_lyr.GetFeatureCount()))
 
 while feature:
     geom = feature.GetGeometryRef()
@@ -87,21 +88,44 @@ while feature:
 
     old_lyr.SetSpatialFilter(point_old)
 
+    # 3 get 1 or 0 if in shapes
     if old_lyr.GetFeatureCount() > 0:
         old_bin = int(1)
+    else:
+        old_bin = int(0)
 
     priv_lyr.SetSpatialFilter(point_priv)
 
     if priv_lyr.GetFeatureCount() > 0:
         priv_bin = int(1)
+    else:
+        priv_bin = int(0)
 
-#3 get 1 or 0 if in shapes
 
-#4 srite result in a table
+    # get elevation value
+    #print(elev_ras.DataType)
+    elev_struc = elev_ras.ReadRaster(px_e, py_e, 1, 1)
+    elev_val = int(struct.unpack('H',elev_struc)[0])
+    # get distance value
+    #print(dist_ras.DataType)
+    dist_struc = dist_ras.ReadRaster(px_d, py_d, 1, 1)
+    dist_val = round(float(struct.unpack('f', dist_struc)[0]),2)
 
+    # get id
+    p_id = int(feature.GetField('ID'))
+
+    #4 srite result in a table
+    df_priv = pd.DataFrame(data={'Point ID': [p_id], 'Variable': ["Private"], "Value": [str(priv_bin)]})
+    df_old = pd.DataFrame(data={'Point ID': [p_id], 'Variable': ["OldGrowth"], "Value": [str(old_bin)]})
+    df_elev = pd.DataFrame(data={'Point ID': [p_id], 'Variable': ["Elevation"], "Value": [elev_val]})
+    df_dist = pd.DataFrame(data={'Point ID': [p_id], 'Variable': ["Road_Dist"], "Value": [dist_val]})
+
+    df = df.append([df_priv,df_old,df_elev,df_dist])
+    print(p_id)
+    feature = points_lyr.GetNextFeature()
 # export table
-
-
+points_lyr.ResetReading()
+df.to_csv(outdir + str("results_assignment_07_wenzler.csv"), header=["Point ID","Variable","Value"], index=None, sep=';', mode='a')
 
 
 
